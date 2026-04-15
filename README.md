@@ -6,10 +6,14 @@
 </div>
 
 ![Status](https://img.shields.io/badge/Status-ACTIVE-success?style=for-the-badge&labelColor=000000&color=d4af37)
-![Version](https://img.shields.io/badge/Version-v1.0.1-blue?style=for-the-badge&labelColor=000000)
+![Version](https://img.shields.io/badge/Version-v1.0.2-blue?style=for-the-badge&labelColor=000000)
 ![Stack](https://img.shields.io/badge/Stack-Python%20%2B%20MCP-informational?style=for-the-badge&labelColor=000000)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge&labelColor=000000)
 ![Tests](https://img.shields.io/badge/Tests-48%20passed-success?style=for-the-badge&labelColor=000000)
+
+<a href="https://glama.ai/mcp/servers/VrtxOmega/Ollama-Omega"><img width="380" height="200" src="https://glama.ai/mcp/servers/VrtxOmega/Ollama-Omega/badges/card.svg" alt="Ollama-Omega MCP server" /></a>
+
+[![Ollama-Omega MCP server](https://glama.ai/mcp/servers/VrtxOmega/Ollama-Omega/badges/score.svg)](https://glama.ai/mcp/servers/VrtxOmega/Ollama-Omega)
 
 ---
 

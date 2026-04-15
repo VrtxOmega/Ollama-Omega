@@ -2,6 +2,22 @@
 
 All notable changes to Ollama-Omega will be documented in this file.
 
+## [1.0.2] — 2026-04-15
+
+### Added
+- Server instructions via MCP `initialization_options.instructions` — provides agents with recommended
+  workflow order and tool disambiguation guidance
+- Glama Card Badge and Score Badge in README
+- `additionalProperties: false` on all tool input schemas for stricter validation
+
+### Changed
+- **Tool definitions upgraded for Glama Tool Definition Quality scoring** — all 6 tools now include:
+  purpose clarity, usage guidelines, behavioral transparency (read-only vs write, side effects),
+  parameter semantics (valid ranges, formats, defaults), and return value descriptions
+- Rich parameter descriptions with examples, valid values, and relationship to Ollama API parameters
+- `ollama_chat` message items now include `enum` constraints on the `role` field
+- Version bumped to 1.0.2
+
 ## [1.0.1] — 2026-04-15
 
 ### Added

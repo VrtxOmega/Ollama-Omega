@@ -98,75 +98,199 @@ def _ok(data: Any) -> list[TextContent]:
 TOOLS = [
     Tool(
         name="ollama_health",
-        description="Check Ollama connectivity and list currently running models.",
-        inputSchema={"type": "object", "properties": {}}
+        description=(
+            "Check Ollama connectivity and list currently running models. "
+            "This is a read-only diagnostic tool — use it first to verify the Ollama daemon is reachable "
+            "before calling any other tool. No parameters required. "
+            "Returns JSON with 'connected' (boolean), 'host' (the Ollama URL), and 'running_models' "
+            "(array of currently loaded model objects). If the daemon is unreachable, returns a structured "
+            "error with connection details instead of throwing."
+        ),
+        inputSchema={"type": "object", "properties": {}, "additionalProperties": False}
     ),
     Tool(
         name="ollama_list_models",
-        description="List all available Ollama models and indicate which are currently loaded in memory.",
-        inputSchema={"type": "object", "properties": {}}
+        description=(
+            "List all available Ollama models and indicate which are currently loaded in memory. "
+            "Read-only. Use this to discover which models are installed before calling ollama_chat "
+            "or ollama_generate. Returns JSON with a 'models' array where each entry has 'name' (string), "
+            "'size' (bytes as integer), 'modified_at' (ISO 8601 timestamp), and 'loaded' (boolean — true if "
+            "the model is currently resident in GPU/CPU memory). No parameters required."
+        ),
+        inputSchema={"type": "object", "properties": {}, "additionalProperties": False}
     ),
     Tool(
         name="ollama_chat",
-        description="Send a chat completion request to an Ollama model. Returns the full response.",
+        description=(
+            "Send a multi-turn chat completion request to an Ollama model and receive the full response. "
+            "Use this for conversational interactions where message history matters. "
+            "For single-prompt generation without history, use ollama_generate instead. "
+            "The model must already be pulled (use ollama_list_models to check, ollama_pull_model to download). "
+            "This tool makes a network request to the Ollama daemon and may take seconds to minutes "
+            "depending on model size and prompt length. Not idempotent — each call generates a new response. "
+            "Returns the full Ollama chat response JSON including 'message' (with 'role' and 'content'), "
+            "'model', 'total_duration', 'eval_count', and token usage statistics."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "model": {"type": "string", "description": "Model name (e.g., 'llama3')"},
+                "model": {
+                    "type": "string",
+                    "description": (
+                        "The exact Ollama model identifier to use for inference. "
+                        "Must match a name from ollama_list_models (e.g., 'llama3.1:8b', 'qwen2.5:7b', 'deepseek-r1:14b'). "
+                        "Cloud models use the same format with a '-cloud' suffix (e.g., 'qwen3.5:397b-cloud')."
+                    )
+                },
                 "messages": {
                     "type": "array",
-                    "description": "List of message objects with 'role' and 'content'",
+                    "description": (
+                        "Ordered list of chat messages forming the conversation history. "
+                        "Each message must have 'role' ('user', 'assistant', or 'system') and 'content' (string). "
+                        "Messages are sent in order — place system prompts first if not using the 'system' parameter."
+                    ),
                     "items": {
                         "type": "object",
                         "properties": {
-                            "role": {"type": "string"},
-                            "content": {"type": "string"}
+                            "role": {
+                                "type": "string",
+                                "enum": ["user", "assistant", "system"],
+                                "description": "The role of the message author: 'user', 'assistant', or 'system'."
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "The text content of the message."
+                            }
                         },
                         "required": ["role", "content"]
                     }
                 },
-                "temperature": {"type": "number", "description": "Sampling temperature"},
-                "max_tokens": {"type": "integer", "description": "Max tokens to generate (maps to num_predict)"},
-                "system": {"type": "string", "description": "System prompt"}
+                "temperature": {
+                    "type": "number",
+                    "description": (
+                        "Sampling temperature controlling randomness. Range: 0.0 (deterministic) to 2.0 (very creative). "
+                        "Default is model-dependent (typically 0.7–0.8). Lower values produce more focused, predictable output."
+                    )
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of tokens to generate in the response. Maps to Ollama's 'num_predict' parameter. "
+                        "Set to -1 for unlimited generation. Default is model-dependent (typically 2048). "
+                        "Must be a positive integer or -1."
+                    )
+                },
+                "system": {
+                    "type": "string",
+                    "description": (
+                        "System prompt prepended to the conversation. Sets the behavior, persona, or constraints for the model. "
+                        "If provided, this is injected as the first message with role 'system' before the messages array."
+                    )
+                }
             },
-            "required": ["model", "messages"]
+            "required": ["model", "messages"],
+            "additionalProperties": False
         }
     ),
     Tool(
         name="ollama_generate",
-        description="Generate a response for a given prompt without chat history.",
+        description=(
+            "Generate a single-turn text completion from an Ollama model without chat history. "
+            "Use this for one-shot prompts, code generation, or text transformation tasks where "
+            "conversation context is not needed. For multi-turn conversations, use ollama_chat instead. "
+            "The model must already be pulled (use ollama_list_models to check availability). "
+            "Makes a network request to the Ollama daemon — response time varies with model size and prompt length. "
+            "Not idempotent — each call produces a new generation. "
+            "Returns the full Ollama generate response JSON including 'response' (the generated text), "
+            "'model', 'total_duration', 'eval_count', and performance metrics."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "model": {"type": "string", "description": "Model name"},
-                "prompt": {"type": "string", "description": "The prompt to generate from"},
-                "temperature": {"type": "number", "description": "Sampling temperature"},
-                "max_tokens": {"type": "integer", "description": "Max tokens to generate"},
-                "system": {"type": "string", "description": "System prompt"}
+                "model": {
+                    "type": "string",
+                    "description": (
+                        "The exact Ollama model identifier (e.g., 'llama3.1:8b', 'codellama:13b'). "
+                        "Must match a name from ollama_list_models."
+                    )
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "The input text prompt to generate a completion from. Can be any length."
+                },
+                "temperature": {
+                    "type": "number",
+                    "description": (
+                        "Sampling temperature (0.0–2.0). Lower values are more deterministic. "
+                        "Default is model-dependent."
+                    )
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum tokens to generate. Maps to Ollama's 'num_predict'. "
+                        "Set to -1 for unlimited. Must be a positive integer or -1."
+                    )
+                },
+                "system": {
+                    "type": "string",
+                    "description": "System prompt to set model behavior and constraints for this generation."
+                }
             },
-            "required": ["model", "prompt"]
+            "required": ["model", "prompt"],
+            "additionalProperties": False
         }
     ),
     Tool(
         name="ollama_show_model",
-        description="Show detailed information about a specific model (license, parameters, etc.).",
+        description=(
+            "Retrieve detailed metadata about a specific Ollama model. Read-only. "
+            "Use this to inspect a model's license, parameter count, quantization, template format, "
+            "and system prompt before using it with ollama_chat or ollama_generate. "
+            "The model must be already pulled locally. "
+            "Returns JSON with 'modelfile' (the Modelfile contents), 'parameters' (runtime defaults), "
+            "'template' (the Go template for prompt formatting), and 'details' (family, parameter_size, "
+            "quantization_level)."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "model": {"type": "string", "description": "Model name"}
+                "model": {
+                    "type": "string",
+                    "description": (
+                        "The exact model identifier to inspect (e.g., 'llama3.1:8b'). "
+                        "Must match a name from ollama_list_models."
+                    )
+                }
             },
-            "required": ["model"]
+            "required": ["model"],
+            "additionalProperties": False
         }
     ),
     Tool(
         name="ollama_pull_model",
-        description="Download a model from the Ollama library. This may take a while.",
+        description=(
+            "Download a model from the Ollama library to the local machine. "
+            "This is a WRITE operation with side effects — it downloads potentially large files (1–100+ GB) "
+            "and stores them on disk. Execution time ranges from seconds to hours depending on model size "
+            "and network speed. Use ollama_list_models first to check if the model is already available. "
+            "The model name must be a valid Ollama library identifier. "
+            "Returns JSON with download status. After pulling, the model becomes available for "
+            "ollama_chat, ollama_generate, and ollama_show_model."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "model": {"type": "string", "description": "Model name to pull"}
+                "model": {
+                    "type": "string",
+                    "description": (
+                        "The model identifier to download from the Ollama library (e.g., 'llama3.1:8b', "
+                        "'mistral:latest', 'codellama:13b-instruct'). Supports tag syntax for specific variants."
+                    )
+                }
             },
-            "required": ["model"]
+            "required": ["model"],
+            "additionalProperties": False
         }
     )
 ]
@@ -309,10 +433,25 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
 # ── MAIN ────────────────────────────────────────────────────────
 
+SERVER_INSTRUCTIONS = (
+    "Ollama-Omega bridges any Ollama model — local or cloud — into your IDE via MCP. "
+    "Recommended workflow: (1) Call ollama_health to verify connection. "
+    "(2) Call ollama_list_models to discover available models. "
+    "(3) If the needed model is not listed, call ollama_pull_model to download it. "
+    "(4) Use ollama_chat for multi-turn conversations or ollama_generate for single-prompt completions. "
+    "(5) Use ollama_show_model to inspect model metadata, license, and quantization details. "
+    "All tools return structured JSON. Error responses always include an 'error' key with a human-readable message. "
+    "The server connects to the Ollama daemon at OLLAMA_HOST (default: http://localhost:11434). "
+    "Cloud-hosted models accessible through the same tools if the Ollama daemon supports them."
+)
+
+
 async def main():
     log.info(f"Ollama MCP Server starting | host={OLLAMA_HOST} timeout={REQUEST_TIMEOUT}s")
     async with stdio_server() as (read, write):
-        await app.run(read, write, app.create_initialization_options())
+        init_options = app.create_initialization_options()
+        init_options.instructions = SERVER_INSTRUCTIONS
+        await app.run(read, write, init_options)
 
 
 if __name__ == "__main__":
