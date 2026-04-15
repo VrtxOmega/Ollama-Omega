@@ -26,8 +26,14 @@ server, add this entry:
 {
   "mcpServers": {
     "ollama": {
-      "command": "python",
-      "args": ["c:\\Veritas_Lab\\ollama-mcp\\ollama_mcp_server.py"],
+      "command": "uv",
+      "args": [
+        "--directory",
+        "c:\\Veritas_Lab\\ollama-mcp",
+        "run",
+        "python",
+        "ollama_mcp_server.py"
+      ],
       "env": {
         "PYTHONUTF8": "1",
         "OLLAMA_HOST": "http://localhost:11434"
@@ -143,8 +149,14 @@ Run (add to mcp_config.json):
     {
       "mcpServers": {
         "ollama": {
-          "command": "python",
-          "args": ["path/to/ollama_mcp_server.py"],
+          "command": "uv",
+          "args": [
+            "--directory",
+            "path/to/ollama-mcp",
+            "run",
+            "python",
+            "ollama_mcp_server.py"
+          ],
           "env": { "PYTHONUTF8": "1", "OLLAMA_HOST": "http://localhost:11434" }
         }
       }
@@ -395,8 +407,14 @@ After building, add to `C:\Users\rlope\.gemini\antigravity\mcp_config.json`:
 
 ```json
 "ollama": {
-  "command": "python",
-  "args": ["c:\\Veritas_Lab\\ollama-mcp\\ollama_mcp_server.py"],
+  "command": "uv",
+  "args": [
+    "--directory",
+    "c:\\Veritas_Lab\\ollama-mcp",
+    "run",
+    "python",
+    "ollama_mcp_server.py"
+  ],
   "env": {
     "PYTHONUTF8": "1",
     "OLLAMA_HOST": "http://localhost:11434"

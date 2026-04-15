@@ -18,8 +18,14 @@ async def main():
     """Connect to Ollama-Omega and exercise all 6 tools."""
 
     server_params = StdioServerParameters(
-        command="python",
-        args=["ollama_mcp_server.py"],
+        command="uv",
+        args=[
+            "--directory",
+            "c:\\Veritas_Lab\\ollama-mcp",
+            "run",
+            "python",
+            "ollama_mcp_server.py"
+        ],
         env={"PYTHONUTF8": "1"},
     )
 
