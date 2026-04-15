@@ -2,6 +2,22 @@
 
 All notable changes to Ollama-Omega will be documented in this file.
 
+## [1.0.3] — 2026-04-15
+
+### Added
+- **MCP ToolAnnotations** on all 6 tools — `readOnlyHint`, `destructiveHint`, `idempotentHint`,
+  `openWorldHint`, and `title` for full Behavioral Transparency scoring
+- `minLength` constraints on all string parameters requiring non-empty input
+- `minimum`/`maximum` constraints on `temperature` (0.0–2.0) and `max_tokens` (≥-1) parameters
+- `minItems: 1` constraint on `ollama_chat` messages array
+- `additionalProperties: false` on nested message items in `ollama_chat`
+
+### Changed
+- Tightened all tool descriptions for higher Conciseness & Structure score —
+  front-loaded critical info, removed filler, standardized return value format notation
+- Descriptions now use compact `{ key: type }` return format for consistency
+- Version bumped to 1.0.3
+
 ## [1.0.2] — 2026-04-15
 
 ### Added
