@@ -4,21 +4,40 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ollama-omega"
-version = "1.0.0"
-description = "Sovereign Ollama Bridge — MCP server for local and cloud Ollama models"
+version = "1.0.1"
+description = "Sovereign Ollama Bridge — MCP server for local and cloud Ollama models. One file. Two deps. Every model."
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "RJ Lopez", email = "vrtxomega@users.noreply.github.com"}]
 requires-python = ">=3.11"
+keywords = ["mcp", "ollama", "ai", "llm", "bridge", "model-context-protocol", "claude-desktop", "veritas"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "mcp>=1.0.0",
     "httpx>=0.27.0",
 ]
 
+[project.scripts]
+ollama-omega = "ollama_mcp_server:main"
+
 [project.urls]
 Homepage = "https://github.com/VrtxOmega/Ollama-Omega"
 Repository = "https://github.com/VrtxOmega/Ollama-Omega"
 Issues = "https://github.com/VrtxOmega/Ollama-Omega/issues"
+Changelog = "https://github.com/VrtxOmega/Ollama-Omega/blob/master/CHANGELOG.md"
 
 [tool.setuptools]
 py-modules = ["ollama_mcp_server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
