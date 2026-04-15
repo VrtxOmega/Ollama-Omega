@@ -11,9 +11,22 @@ Hardened by:  Antigravity IDE agent (fixes #2,#3,#4,#5,#8,#9,#11)
 """
 
 import os
+import sys
+import glob
 import json
 import asyncio
 import logging
+
+# ── VENV BOOTSTRAP ──────────────────────────────────────────────
+# When executed by Glama's auto-generated Docker template, bare `python`
+# resolves to the global interpreter while `uv sync` installs packages
+# into /app/.venv. This bootstrap detects that situation and adds the
+# venv site-packages to sys.path before any third-party imports.
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_venv_sp = glob.glob(os.path.join(_script_dir, ".venv", "lib", "python*", "site-packages"))
+if _venv_sp and _venv_sp[0] not in sys.path:
+    sys.path.insert(0, _venv_sp[0])
+
 import httpx
 from typing import Any
 
