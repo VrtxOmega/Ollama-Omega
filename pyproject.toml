@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ollama-omega = "ollama_mcp_server:main"
+ollama-omega-mcp = "ollama_mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/VrtxOmega/Ollama-Omega"
