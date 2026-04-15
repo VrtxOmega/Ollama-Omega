@@ -76,8 +76,14 @@ A hardened MCP server that bridges the full Ollama ecosystem — local models an
 {
   "mcpServers": {
     "ollama": {
-      "command": "python",
-      "args": ["path/to/ollama_mcp_server.py"],
+      "command": "uv",
+      "args": [
+        "--directory",
+        "path/to/ollama-mcp",
+        "run",
+        "python",
+        "ollama_mcp_server.py"
+      ],
       "env": {
         "PYTHONUTF8": "1",
         "OLLAMA_HOST": "http://localhost:11434",
