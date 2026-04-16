@@ -99,11 +99,14 @@ TOOLS = [
     Tool(
         name="ollama_health",
         description=(
-            "Check Ollama connectivity and list currently running models. "
-            "Use this first to verify the Ollama daemon is reachable before calling any other tool. "
-            "No parameters required. "
-            "Returns JSON: { connected: boolean, host: string, running_models: array }. "
-            "On connection failure, returns { error: string, host: string } instead of throwing."
+            "Check Ollama daemon connectivity and list currently running models. "
+            "Use this tool as the first call to verify the Ollama service is reachable "
+            "before calling any other tool in this server. Do not use this to list all "
+            "installed models — use ollama_list_models instead. "
+            "Behavior: Read-only, idempotent, safe to retry. No authentication required. "
+            "On success returns JSON with 'connected' (true), 'host' (URL string), and "
+            "'running_models' (array of model objects currently loaded in memory). "
+            "On connection failure returns { error: string, host: string } without throwing."
         ),
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
         annotations=ToolAnnotations(
@@ -117,11 +120,15 @@ TOOLS = [
     Tool(
         name="ollama_list_models",
         description=(
-            "List all locally available Ollama models with their load status. "
-            "Use this to discover installed models before calling ollama_chat or ollama_generate. "
-            "No parameters required. "
-            "Returns JSON: { models: [{ name: string, size: integer (bytes), "
-            "modified_at: string (ISO 8601), loaded: boolean }] }."
+            "List all Ollama models installed on the local machine with their memory load status. "
+            "Use this tool to discover available model names before calling ollama_chat, "
+            "ollama_generate, or ollama_show_model. Do not use this to check if the Ollama "
+            "daemon is running — use ollama_health instead. "
+            "Behavior: Read-only, idempotent, safe to retry. No authentication required. "
+            "Returns JSON with 'models' array. Each entry contains 'name' (string — use this "
+            "exact value as the 'model' parameter in other tools), 'size' (integer, bytes on disk), "
+            "'modified_at' (ISO 8601 timestamp), and 'loaded' (boolean — true if currently in "
+            "GPU/CPU memory). Returns an empty array if no models are installed."
         ),
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
         annotations=ToolAnnotations(
@@ -136,13 +143,18 @@ TOOLS = [
         name="ollama_chat",
         description=(
             "Send a multi-turn chat completion request to an Ollama model. "
-            "Use this for conversational interactions where message history matters. "
-            "For single-prompt completions without history, use ollama_generate instead. "
-            "Requires the model to be already pulled (check with ollama_list_models). "
-            "Makes a network request to the Ollama daemon; response time varies by model size. "
-            "Not idempotent — each call produces a new response. "
-            "Returns JSON: { message: { role: string, content: string }, model: string, "
-            "total_duration: integer (nanoseconds), eval_count: integer }."
+            "Use this tool for conversational interactions where message history matters — "
+            "for example, follow-up questions, multi-step reasoning, or dialogue with context. "
+            "Do not use this for single-prompt completions without history; use ollama_generate "
+            "instead to avoid the overhead of the messages array. "
+            "Prerequisites: The 'model' must already be installed locally. Call ollama_list_models "
+            "to verify availability; use ollama_pull_model to download if missing. "
+            "Behavior: Read-only (no state changes on the server), but not idempotent — each "
+            "call generates a new response even with identical inputs. Network-dependent; response "
+            "time varies from seconds to minutes based on model size and prompt length. On model-not-found "
+            "error, returns { error: string } without throwing. Safe to retry on timeout. "
+            "Returns JSON with 'message' ({ role: 'assistant', content: string }), 'model' (string), "
+            "'total_duration' (nanoseconds), and 'eval_count' (tokens generated)."
         ),
         inputSchema={
             "type": "object",
@@ -151,25 +163,32 @@ TOOLS = [
                     "type": "string",
                     "minLength": 1,
                     "description": (
-                        "Ollama model identifier. Must match a name from ollama_list_models "
-                        "(e.g., 'llama3.1:8b', 'qwen2.5:7b'). Cloud models use a '-cloud' suffix."
+                        "Exact Ollama model identifier. Must match a 'name' value from ollama_list_models "
+                        "output (e.g., 'llama3.1:8b', 'qwen2.5:7b'). Cloud-hosted models use a "
+                        "'-cloud' suffix (e.g., 'deepseek-v3:671b-cloud'). If unsure which models "
+                        "are available, call ollama_list_models first."
                     )
                 },
                 "messages": {
                     "type": "array",
                     "minItems": 1,
-                    "description": "Ordered conversation history. Each message needs 'role' and 'content'.",
+                    "description": (
+                        "Ordered conversation history sent to the model. Place system instructions "
+                        "first (role 'system'), then alternate user/assistant turns. The model sees "
+                        "all messages in order. If you only need a system prompt with one user message, "
+                        "consider using the 'system' parameter instead of a system-role message."
+                    ),
                     "items": {
                         "type": "object",
                         "properties": {
                             "role": {
                                 "type": "string",
                                 "enum": ["user", "assistant", "system"],
-                                "description": "Message author role."
+                                "description": "Message author: 'system' for instructions, 'user' for queries, 'assistant' for prior model responses."
                             },
                             "content": {
                                 "type": "string",
-                                "description": "Message text content."
+                                "description": "The text content of this message."
                             }
                         },
                         "required": ["role", "content"],
@@ -180,16 +199,30 @@ TOOLS = [
                     "type": "number",
                     "minimum": 0.0,
                     "maximum": 2.0,
-                    "description": "Sampling temperature. 0.0 = deterministic, 2.0 = maximum randomness. Default: model-dependent (~0.7)."
+                    "description": (
+                        "Sampling temperature controlling output randomness. "
+                        "0.0 = deterministic (always pick the most likely token), "
+                        "2.0 = maximum creativity. Default is model-dependent, typically ~0.7. "
+                        "Use low values (0.0–0.3) for factual tasks, higher (0.7–1.0) for creative tasks."
+                    )
                 },
                 "max_tokens": {
                     "type": "integer",
                     "minimum": -1,
-                    "description": "Maximum tokens to generate. Maps to Ollama 'num_predict'. Use -1 for unlimited. Default: model-dependent (~2048)."
+                    "description": (
+                        "Maximum number of tokens to generate in the response. "
+                        "Maps to Ollama's internal 'num_predict' parameter. "
+                        "Use -1 for unlimited generation (model stops at its natural end token). "
+                        "Default is model-dependent, typically ~2048."
+                    )
                 },
                 "system": {
                     "type": "string",
-                    "description": "System prompt injected before the messages array to set model behavior and constraints."
+                    "description": (
+                        "System prompt prepended before the messages array. Use this as a shortcut "
+                        "to set model behavior without adding a system-role message to the 'messages' array. "
+                        "If both this field and a system-role message are provided, this field takes precedence."
+                    )
                 }
             },
             "required": ["model", "messages"],
@@ -206,13 +239,18 @@ TOOLS = [
     Tool(
         name="ollama_generate",
         description=(
-            "Generate a single-turn text completion from an Ollama model without chat history. "
-            "Use this for one-shot prompts, code generation, or text transformation. "
-            "For multi-turn conversations with history, use ollama_chat instead. "
-            "Requires the model to be already pulled (check with ollama_list_models). "
-            "Not idempotent — each call produces a new generation. "
-            "Returns JSON: { response: string (generated text), model: string, "
-            "total_duration: integer (nanoseconds), eval_count: integer }."
+            "Generate a single-turn text completion from an Ollama model without conversation history. "
+            "Use this tool for one-shot tasks: code generation, text transformation, summarization, "
+            "translation, or any prompt that does not require prior context. "
+            "Do not use this for multi-turn conversations where message history matters; "
+            "use ollama_chat instead. "
+            "Prerequisites: The 'model' must already be installed. Call ollama_list_models to verify; "
+            "use ollama_pull_model to download if missing. "
+            "Behavior: Read-only, not idempotent — each call produces a different generation even with "
+            "identical inputs. Network-dependent; response time varies with model size and prompt length. "
+            "On model-not-found error, returns { error: string } without throwing. Safe to retry on timeout. "
+            "Returns JSON with 'response' (string — the generated text), 'model' (string), "
+            "'total_duration' (nanoseconds), and 'eval_count' (tokens generated)."
         ),
         inputSchema={
             "type": "object",
@@ -220,27 +258,36 @@ TOOLS = [
                 "model": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "Ollama model identifier (e.g., 'llama3.1:8b', 'codellama:13b'). Must match a name from ollama_list_models."
+                    "description": (
+                        "Exact Ollama model identifier. Must match a 'name' from ollama_list_models "
+                        "(e.g., 'llama3.1:8b', 'codellama:13b'). If unsure, call ollama_list_models first."
+                    )
                 },
                 "prompt": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "The input text prompt to generate a completion from."
+                    "description": "The input text prompt to generate a completion from. Can be any length — the model's context window is the only limit."
                 },
                 "temperature": {
                     "type": "number",
                     "minimum": 0.0,
                     "maximum": 2.0,
-                    "description": "Sampling temperature. 0.0 = deterministic, 2.0 = maximum randomness. Default: model-dependent."
+                    "description": (
+                        "Sampling temperature. 0.0 = deterministic, 2.0 = maximum randomness. "
+                        "Default is model-dependent. Use low values for factual/code tasks."
+                    )
                 },
                 "max_tokens": {
                     "type": "integer",
                     "minimum": -1,
-                    "description": "Maximum tokens to generate. Maps to Ollama 'num_predict'. Use -1 for unlimited."
+                    "description": (
+                        "Maximum tokens to generate. Maps to Ollama 'num_predict'. "
+                        "Use -1 for unlimited (model stops at its natural end token)."
+                    )
                 },
                 "system": {
                     "type": "string",
-                    "description": "System prompt to set model behavior and constraints for this generation."
+                    "description": "System prompt to set model behavior, persona, or output format constraints for this generation."
                 }
             },
             "required": ["model", "prompt"],
@@ -257,12 +304,17 @@ TOOLS = [
     Tool(
         name="ollama_show_model",
         description=(
-            "Retrieve detailed metadata about a specific Ollama model including its license, "
-            "parameter count, quantization level, template format, and default system prompt. "
-            "Use this to inspect model capabilities before calling ollama_chat or ollama_generate. "
-            "The model must be already pulled locally (check with ollama_list_models). "
-            "Returns JSON: { modelfile: string, parameters: string, template: string, "
-            "details: { family: string, parameter_size: string, quantization_level: string } }."
+            "Retrieve detailed metadata about a specific installed Ollama model. "
+            "Use this tool to inspect a model's architecture, license, quantization level, "
+            "prompt template, and default parameters before using it with ollama_chat or "
+            "ollama_generate. Do not use this to list all models — use ollama_list_models instead. "
+            "Do not use this to download new models — use ollama_pull_model instead. "
+            "Prerequisites: The model must already be installed locally (verify with ollama_list_models). "
+            "Behavior: Read-only, idempotent, safe to retry. Returns the same metadata for the same "
+            "model every time. On model-not-found error, returns { error: string } without throwing. "
+            "Returns JSON with 'modelfile' (full Modelfile text), 'parameters' (runtime defaults like "
+            "temperature and context length), 'template' (Go template for prompt formatting), and "
+            "'details' ({ family: string, parameter_size: string, quantization_level: string })."
         ),
         inputSchema={
             "type": "object",
@@ -270,7 +322,11 @@ TOOLS = [
                 "model": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "Ollama model identifier to inspect (e.g., 'llama3.1:8b'). Must match a name from ollama_list_models."
+                    "description": (
+                        "Exact Ollama model identifier to inspect (e.g., 'llama3.1:8b', 'mistral:latest'). "
+                        "Must match a 'name' from ollama_list_models output. If unsure which models are "
+                        "installed, call ollama_list_models first."
+                    )
                 }
             },
             "required": ["model"],
@@ -288,11 +344,15 @@ TOOLS = [
         name="ollama_pull_model",
         description=(
             "Download a model from the Ollama library to the local machine. "
-            "WARNING: This is a write operation — it downloads large files (1–100+ GB) to disk. "
-            "Execution time ranges from seconds to hours depending on model size and network speed. "
-            "Use ollama_list_models first to check if the model is already available locally. "
-            "After pulling, the model becomes available for ollama_chat, ollama_generate, and ollama_show_model. "
-            "Returns JSON: { status: string }. On failure, returns { error: string }."
+            "Use this tool when a model is needed but not yet installed locally. "
+            "Do not use this if the model is already available — call ollama_list_models first "
+            "to check. Do not use this to run inference — use ollama_chat or ollama_generate after pulling. "
+            "Behavior: This is a WRITE operation — it downloads large files (1–100+ GB) and stores them "
+            "on disk. Execution time ranges from seconds to hours depending on model size and bandwidth. "
+            "Idempotent — re-pulling an already-installed model is safe and verifies integrity. "
+            "No authentication required. On network failure, returns { error: string } without throwing. "
+            "After completion, the model becomes available for ollama_chat, ollama_generate, and "
+            "ollama_show_model. Returns JSON with 'status' (string, e.g., 'success')."
         ),
         inputSchema={
             "type": "object",
@@ -301,9 +361,10 @@ TOOLS = [
                     "type": "string",
                     "minLength": 1,
                     "description": (
-                        "Model identifier to download from the Ollama library "
-                        "(e.g., 'llama3.1:8b', 'mistral:latest', 'codellama:13b-instruct'). "
-                        "Supports tag syntax for specific variants."
+                        "Model identifier to download from the Ollama library. Use the format "
+                        "'name:tag' (e.g., 'llama3.1:8b', 'mistral:latest', 'codellama:13b-instruct'). "
+                        "The tag selects a specific size or quantization variant. "
+                        "Omitting the tag defaults to ':latest'."
                     )
                 }
             },

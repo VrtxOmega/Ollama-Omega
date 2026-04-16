@@ -2,6 +2,19 @@
 
 All notable changes to Ollama-Omega will be documented in this file.
 
+## [1.0.4] — 2026-04-15
+
+### Changed
+- **Complete TDQS rewrite targeting 5/5 on all dimensions** — restructured every tool description
+  following Glama's documented 5/5 template pattern
+- All 6 tools now follow: Purpose → When to use → When NOT to use → Prerequisites → Behavior → Returns
+- **Behavior** (2→5): Added error handling, retry safety, idempotency, timeout behavior for each tool
+- **Completeness** (2→5): Full return structure with field types, edge cases, empty result behavior
+- **Usage Guidelines** (2→5): Explicit "Do not use for X — use Y instead" cross-references on every tool
+- **Parameters** (3→5): Added decision guidance (low temp for factual, high for creative), format
+  examples (`name:tag`), and tool-to-tool data flow (use `name` from `ollama_list_models` output)
+- Version bumped to 1.0.4
+
 ## [1.0.3] — 2026-04-15
 
 ### Added

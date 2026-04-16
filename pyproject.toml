@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ollama-omega"
-version = "1.0.3"
+version = "1.0.4"
 description = "Sovereign Ollama Bridge — MCP server for local and cloud Ollama models. One file. Two deps. Every model."
 readme = "README.md"
 license = {text = "MIT"}
