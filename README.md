@@ -1,7 +1,9 @@
 <div align="center">
-  <h1>OLLAMA-OMEGA</h1>
-  <p><strong>Sovereign Ollama Bridge — MCP Server for Local &amp; Cloud Models</strong></p>
-  <p><em>One file. Two deps. Every Ollama model — local or cloud.</em></p>
+
+# OLLAMA-OMEGA
+
+**MCP server — Ollama bridge for any IDE. Sovereign compute. No cloud dependency.**
+
 </div>
 
 ![Status](https://img.shields.io/badge/Status-ACTIVE-success?style=for-the-badge&labelColor=000000&color=d4af37)
@@ -16,82 +18,122 @@
 
 ---
 
+## Ecosystem Canon
+
+Ollama-Omega is the compute interface layer of the VERITAS & Sovereign Ecosystem (Omega Universe). It surfaces every locally installed Ollama model — and any cloud-hosted model accessible through an Ollama daemon — as a structured MCP tool set inside any MCP-compatible IDE or agent runtime.
+
+Within the Omega Universe, governance flows downward from `omega-brain-mcp` (the VERITAS gate and approval pipeline) to `Ollama-Omega` (the inference transport). Ollama-Omega is the final execution node: it issues the prompt, receives model output, and returns a validated, schema-typed response. No inference executes before the upstream gate approves the request.
+
+Ollama-Omega does not perform memory, authentication, persistence, or policy enforcement. Those responsibilities belong to the operators above it in the stack. This node does one thing: connect IDE to Ollama, reliably and without information loss.
+
+---
+
 ## Overview
 
-Ollama-Omega is a hardened [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that bridges the full Ollama ecosystem — local GPU models and cloud-hosted behemoths alike — into any MCP-compatible IDE or agent. No wrapper scripts. No bloated SDK. Just a single Python file with two dependencies.
+**What it is:**
 
-Born out of necessity when Google Antigravity and Gemini were offline, Ollama-Omega gives you a **sovereign, offline-capable AI stack** that works regardless of cloud availability. Run 400B+ parameter models locally or via Ollama's cloud proxy — same API, same tools, zero configuration changes.
+- A single-file MCP server (`ollama_mcp_server.py`) that bridges Ollama into any MCP-compatible client
+- Six validated tools covering health, model listing, chat, generation, model inspection, and model pull
+- Compatible with Claude Desktop, VS Code + Continue, Cursor, Antigravity IDE, and any other client that speaks MCP over stdio
 
-> **DESIGN PRINCIPLE:** Ollama-Omega does not abstract away Ollama. It exposes the complete Ollama API surface through 6 validated, error-handled MCP tools with zero information loss.
+**What it is not:**
+
+- A full AI platform, memory layer, or policy engine
+- A replacement for the Ollama daemon — it wraps the daemon's HTTP API over MCP stdio transport
+- A cloud service — all inference is local or routed through your own Ollama daemon
+
+---
+
+## Features
+
+| Feature | Detail |
+|---------|--------|
+| 6 MCP tools | Health check, list models, chat, generate, show model info, pull model |
+| Stdio transport | JSON-RPC 2.0 over stdin/stdout — no network ports opened by this server |
+| Typed output schemas | Every tool carries a full `outputSchema` for structured agent consumption |
+| SSRF mitigation | `follow_redirects=False` on the singleton httpx client |
+| Input validation | `_validate_required()` gate before any HTTP call; no uncaught `KeyError` |
+| Safe JSON handling | `_safe_json()` wrapper — no crash on malformed Ollama responses |
+| Error sanitization | `_error()` helper — no stack traces, no internals exposed to the client |
+| Cloud model support | Any model accessible on your Ollama daemon is available — no config change required |
+| Docker-ready | `Dockerfile` included for containerized deployment |
+
+---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    MCP Client (IDE)                  │
-│         Claude Desktop / Antigravity / etc.          │
-└──────────────────────┬──────────────────────────────┘
-                       │ stdio (JSON-RPC 2.0)
-┌──────────────────────▼──────────────────────────────┐
-│              ollama_mcp_server.py                     │
-│  ┌──────────┐ ┌──────────┐ ┌───────────────────┐    │
-│  │ Validator│ │ Dispatch │ │ Singleton httpx   │    │
-│  │ + Schema │→│ Router   │→│ AsyncClient       │    │
-│  └──────────┘ └──────────┘ │ (no redirects)    │    │
-│                             └─────────┬─────────┘    │
-└───────────────────────────────────────┼──────────────┘
-                                        │ HTTP
-┌───────────────────────────────────────▼──────────────┐
-│                  Ollama Daemon                        │
-│    Local models (GPU) │ Cloud models (API proxy)      │
-└───────────────────────────────────────────────────────┘
+  IDE / MCP Client
+  (Claude Desktop, VS Code + Continue, Cursor, Antigravity, ...)
+         |
+         |  stdio  JSON-RPC 2.0
+         v
+  +-----------------------------+
+  |    ollama_mcp_server.py     |
+  |  Validator  |   Dispatch    |
+  |  Singleton httpx AsyncClient|
+  +-----------------------------+
+         |
+         |  HTTP  (default: http://localhost:11434)
+         v
+  +-----------------------------+
+  |       Ollama Daemon         |
+  |  Local models  (GPU / CPU)  |
+  |  Cloud proxy models         |
+  +-----------------------------+
+         |
+         v
+  Local model store
+  (~/.ollama/models)
 ```
 
-## Tools (6)
+The server process lives for the lifetime of the IDE session. One httpx `AsyncClient` handles all upstream Ollama HTTP traffic. The MCP client never communicates with Ollama directly.
 
-| Tool | Purpose |
-|------|---------|
-| `ollama_health` | Check connectivity and list currently running/loaded models |
-| `ollama_list_models` | List all available models with size, loaded status, and modification date |
-| `ollama_chat` | Send a chat completion request with message history and system prompt |
-| `ollama_generate` | Generate a response for a given prompt without chat history |
-| `ollama_show_model` | Show detailed information about a specific model (license, parameters) |
-| `ollama_pull_model` | Download a model from the Ollama library |
+---
 
-## Hardening Audit
+## Quickstart
 
-| # | Category | Mitigation |
-|---|----------|------------|
-| 1 | **SSRF** | Redirects disabled on httpx client (`follow_redirects=False`) |
-| 2 | **Resource Leak** | Singleton `AsyncClient` — one connection pool for server lifetime |
-| 3 | **Input Validation** | `_validate_required()` gate on every tool before any HTTP call |
-| 4 | **JSON Safety** | `_safe_json()` wrapper — never crashes on malformed responses |
-| 5 | **Structured Logging** | All stderr output via `logging` module, not raw `print()` |
-| 6 | **DRY Payloads** | `_build_options()` centralizes temperature/token mapping |
-| 7 | **Error Sanitization** | `_error()` helper — no stack traces, no internals leaked to client |
+### Prerequisites
 
-## Quick Start
+- **Python 3.11 or later**
+- **Ollama daemon installed and running**
 
-### 1. Install Ollama
+#### Install Ollama
 
-Download and install Ollama from [ollama.com](https://ollama.com). Verify it is running:
+| Platform | Method |
+|----------|--------|
+| **Windows** | Download the installer from [ollama.com/download/windows](https://ollama.com/download/windows) and run it. Ollama starts automatically as a system tray service. |
+| **macOS** | Download from [ollama.com/download/mac](https://ollama.com/download/mac), or via Homebrew: `brew install ollama && ollama serve` |
+| **Linux** | `curl -fsSL https://ollama.com/install.sh \| sh` — starts the daemon via systemd on supported distributions |
+
+Verify the daemon is reachable before proceeding:
 
 ```bash
 curl http://localhost:11434
-# Expected: Ollama is running
+# Expected response: Ollama is running
 ```
 
-### 2. Install Ollama-Omega
+---
 
-**Option A — pip (recommended):**
+### Install Ollama-Omega
+
+**Option A — pip (simplest):**
 
 ```bash
 pip install mcp httpx
-# Then download the server file:
-curl -O https://raw.githubusercontent.com/VrtxOmega/Ollama-Omega/master/ollama_mcp_server.py
 ```
 
-**Option B — clone the repo:**
+Then download the server file:
+
+```bash
+# macOS / Linux
+curl -O https://raw.githubusercontent.com/VrtxOmega/Ollama-Omega/master/ollama_mcp_server.py
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/VrtxOmega/Ollama-Omega/master/ollama_mcp_server.py -OutFile ollama_mcp_server.py
+```
+
+**Option B — clone the repository (recommended for local development):**
 
 ```bash
 git clone https://github.com/VrtxOmega/Ollama-Omega.git
@@ -99,32 +141,53 @@ cd Ollama-Omega
 pip install mcp httpx
 ```
 
-**Option C — Docker:**
+**Option C — uv (virtual-env isolation, recommended for production):**
 
 ```bash
+git clone https://github.com/VrtxOmega/Ollama-Omega.git
+cd Ollama-Omega
+uv sync
+```
+
+**Option D — Docker:**
+
+```bash
+git clone https://github.com/VrtxOmega/Ollama-Omega.git
+cd Ollama-Omega
 docker build -t ollama-omega .
-# Run with stdio transport (for IDE integration):
+# Run with stdio transport for IDE integration:
 docker run -i --rm -e OLLAMA_HOST=http://host.docker.internal:11434 ollama-omega
 ```
 
-### 3. Pull a model (if you don't have one)
+---
+
+### Pull a model
 
 ```bash
 ollama pull llama3.2:3b
-# Or a cloud model after `ollama login`:
-# ollama pull qwen3.5:397b-cloud
 ```
 
-### 4. Configure your IDE / MCP client
+---
 
-**Claude Desktop** (`~/.config/Claude/claude_desktop_config.json` on macOS/Linux, `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+### Configure your MCP client
+
+Edit the configuration file for your IDE and add the `ollama` server block. Replace `/path/to/Ollama-Omega` with the actual path to your clone (or the directory containing `ollama_mcp_server.py`).
+
+#### Claude Desktop
+
+Config file locations:
+
+| Platform | Path |
+|----------|------|
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| macOS / Linux | `~/.config/Claude/claude_desktop_config.json` |
 
 ```json
 {
   "mcpServers": {
     "ollama": {
       "command": "python",
-      "args": ["/path/to/ollama_mcp_server.py"],
+      "args": ["/path/to/Ollama-Omega/ollama_mcp_server.py"],
       "env": {
         "PYTHONUTF8": "1",
         "OLLAMA_HOST": "http://localhost:11434",
@@ -135,7 +198,7 @@ ollama pull llama3.2:3b
 }
 ```
 
-**With `uv` (virtual-env isolation):**
+With `uv` (virtual-env isolation):
 
 ```json
 {
@@ -159,7 +222,13 @@ ollama pull llama3.2:3b
 }
 ```
 
-**Antigravity IDE** (`~/.gemini/antigravity/mcp_config.json`):
+#### VS Code + Continue / Cursor
+
+Most MCP-compatible VS Code extensions follow the same JSON structure under their own config key. Substitute the `command` and `args` block from the Claude Desktop example above. Consult your extension's documentation for the exact config file path.
+
+#### Antigravity IDE
+
+Config file: `~/.gemini/antigravity/mcp_config.json`
 
 ```json
 {
@@ -182,78 +251,100 @@ ollama pull llama3.2:3b
 }
 ```
 
-Restart your IDE after saving the config. Verify with the `ollama_health` tool.
+Restart your IDE after saving the configuration file. Verify connectivity by calling the `ollama_health` tool from your IDE.
 
-### Environment Variables
+---
+
+## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama daemon URL |
-| `OLLAMA_TIMEOUT` | `300` | Request timeout in seconds (long for large model pulls/cloud inference) |
-| `PYTHONUTF8` | — | Set to `1` for Windows Unicode safety |
+| `OLLAMA_HOST` | `http://localhost:11434` | Base URL of the Ollama daemon. Override to point at a remote or containerized daemon. |
+| `OLLAMA_TIMEOUT` | `300` | HTTP request timeout in seconds. Increase for large model pulls or slow cloud inference. |
+| `PYTHONUTF8` | _(unset)_ | Set to `1` on Windows to prevent Unicode encoding errors in stdio transport. |
 
-### Cloud Models
+Cloud-hosted models exposed by your Ollama daemon (e.g., `qwen3.5:397b-cloud` via API proxy) are accessible through the same 6 tools with no configuration change. Authenticate first with `ollama login`.
 
-Ollama-Omega is version-agnostic. If your Ollama daemon exposes cloud-hosted models (e.g., `qwen3.5:397b-cloud` via API proxy), they are accessible through the same 6 tools — no configuration change required.
-
-```bash
-# Authenticate with Ollama Cloud first:
-ollama login
-```
-
-## File Structure
-
-```
-Ollama-Omega/
-  ollama_mcp_server.py     # MCP server — hardened, single-file
-  pyproject.toml            # Package metadata, CLI entry, PyPI classifiers
-  requirements.txt          # mcp>=1.9.0, httpx>=0.27.0
-  glama.json                # Glama MCP directory registration
-  LICENSE                   # MIT
-  CHANGELOG.md              # Version history
-  tests/
-    test_server.py           # 48 tests — tools, dispatch, errors, SSRF, config
-  examples/
-    basic_usage.py           # Programmatic MCP client example
-  docs/
-    BUILD_SPEC.md            # Internal build specification
-```
-
-## Testing
-
-```bash
-pip install pytest mcp httpx
-python -m pytest tests/ -v
-```
-
-48 tests covering:
-- **Tool Definitions** — schema validation, required fields, descriptions
-- **Helper Functions** — options builder, validation, JSON safety, error formatting
-- **Dispatcher** — all 6 tool paths with mocked HTTP responses
-- **Error Handling** — connection, timeout, HTTP status, exception sanitization
-- **Configuration** — environment defaults, SSRF mitigation, server identity
+---
 
 ## Troubleshooting
 
-### `ollama_health` returns `connected: false`
-
-The Ollama daemon is not running or is unreachable at the configured host.
+**Ollama daemon not running**
 
 ```bash
 # Start the daemon
 ollama serve
 
-# Verify it responds
+# Verify
 curl http://localhost:11434
 ```
 
-If you changed `OLLAMA_HOST`, make sure the URL and port match your daemon config.
+If `OLLAMA_HOST` is set to a non-default value, confirm the URL and port match the daemon's bind address.
 
 ---
 
-### `Request timed out after 300s`
+**Port conflict — daemon fails to start**
 
-Large cloud models (400B+) can take 60–180 s for a cold response. Increase the timeout:
+Ollama binds to port `11434` by default. If that port is occupied:
+
+```bash
+# macOS / Linux — find the occupying process
+lsof -i :11434
+
+# Windows (PowerShell)
+netstat -ano | findstr :11434
+```
+
+Set `OLLAMA_HOST` to an alternate port once you have reconfigured the daemon.
+
+---
+
+**Model not found / HTTP 404**
+
+The referenced model has not been pulled. Pull it first:
+
+```bash
+ollama pull <model-name>
+
+# Cloud-hosted models require authentication:
+ollama login
+ollama pull qwen3.5:397b-cloud
+```
+
+Alternatively, call `ollama_pull_model` from your IDE once the server is connected.
+
+---
+
+**Tools do not appear in the IDE**
+
+1. Confirm the `command` path resolves to a working Python 3.11+ interpreter.
+2. Confirm `mcp` and `httpx` are installed in that interpreter's environment.
+3. Restart the IDE — MCP servers are discovered at startup, not while running.
+4. Check IDE logs for JSON-RPC handshake errors.
+
+---
+
+**Windows: `UnicodeEncodeError` or garbled output**
+
+Set `PYTHONUTF8=1` in the server's `env` block. This is already shown in the configuration examples above.
+
+---
+
+**Docker: cannot reach `localhost:11434`**
+
+Docker containers run in an isolated network namespace. Replace `localhost` with `host.docker.internal`:
+
+```bash
+docker run -i --rm -e OLLAMA_HOST=http://host.docker.internal:11434 ollama-omega
+```
+
+On Linux hosts, `--network=host` may be required instead.
+
+---
+
+**Request timed out after 300s**
+
+Cold inference on large models (70B+) or cloud-proxied models can exceed the default timeout. Increase it in your MCP client config:
 
 ```json
 "env": { "OLLAMA_TIMEOUT": "600" }
@@ -261,51 +352,45 @@ Large cloud models (400B+) can take 60–180 s for a cold response. Increase the
 
 ---
 
-### `Model not found` / HTTP 404 from Ollama
+## Security and Sovereignty
 
-The model hasn't been pulled yet. Use `ollama_pull_model` from your IDE or run:
+Ollama-Omega runs exclusively on `localhost` by default, communicating with the Ollama daemon over the loopback interface. No data leaves the machine unless your Ollama daemon is configured to proxy to a cloud endpoint.
 
-```bash
-ollama pull <model-name>
-# Cloud models require login first:
-ollama login
-ollama pull qwen3.5:397b-cloud
-```
+**Hardening applied to this server:**
 
----
+| Control | Implementation |
+|---------|----------------|
+| SSRF prevention | `follow_redirects=False` on the httpx singleton |
+| Input sanitization | Required-argument validation before any outbound HTTP call |
+| Error sanitization | Internal errors are never forwarded to the MCP client |
+| Non-root Docker | Container process runs as a dedicated `ollama` user |
 
-### Tools don't appear in my IDE
+**Limitations and out-of-scope items:**
 
-1. Confirm the `command` path resolves to a working Python 3.11+ interpreter.
-2. Check that `mcp` and `httpx` are installed in that interpreter's environment.
-3. Restart the IDE — MCP servers are discovered at startup.
-4. Check IDE logs for JSON-RPC errors from the server.
-
----
-
-### Windows: `UnicodeEncodeError` / garbled output
-
-Set `PYTHONUTF8=1` in the server's `env` block (already shown in the Quick Start config).
+- Authentication between the MCP client and this server is not implemented. MCP stdio transport is inherently scoped to the local process boundary.
+- This server does not validate the content of prompts or model outputs. Content policy enforcement is the responsibility of the upstream operator (see `omega-brain-mcp`).
+- Network isolation, host-level security, and key management are outside the scope of this component.
 
 ---
 
-### Docker: cannot reach `localhost:11434`
+## Omega Universe
 
-Docker containers use their own network namespace. Use `host.docker.internal` instead of `localhost`:
+Ollama-Omega is one node in the VERITAS & Sovereign Ecosystem. Cross-references:
 
-```bash
-docker run -i --rm -e OLLAMA_HOST=http://host.docker.internal:11434 ollama-omega
-```
+| Repository | Role in the stack |
+|------------|-------------------|
+| [omega-brain-mcp](https://github.com/VrtxOmega/omega-brain-mcp) | VERITAS gate + cryptographic audit ledger + Cortex approval pipeline. The governance layer above Ollama-Omega. |
+| [veritas-vault](https://github.com/VrtxOmega/veritas-vault) | Long-term retention substrate. Stores artifacts, attestations, and approved outputs. |
+| [Aegis](https://github.com/VrtxOmega/Aegis) | Security enforcement layer. Threat surface scanning and sovereign boundary enforcement. |
+| [drift](https://github.com/VrtxOmega/drift) | Drift detection and configuration integrity monitoring across Omega operators. |
+| [SovereignMedia](https://github.com/VrtxOmega/SovereignMedia) | Media processing and content pipeline within the Omega framework. |
+| [sovereign-arcade](https://github.com/VrtxOmega/sovereign-arcade) | Operator sandbox and demonstration environment for Omega Universe components. |
 
-On Linux you may need `--network=host` instead.
-
-## Companion Server
-
-Ollama-Omega is the transport layer for the [**Omega Brain MCP**](https://github.com/VrtxOmega/omega-brain-mcp) — cross-session episodic memory + 10-gate VERITAS Build pipeline. Together they form the sovereign intelligence stack.
+---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
 
 ---
 
