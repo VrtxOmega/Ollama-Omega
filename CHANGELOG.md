@@ -2,6 +2,19 @@
 
 All notable changes to Ollama-Omega will be documented in this file.
 
+## [1.0.5] — 2026-04-15
+
+### Added
+- **`outputSchema` on all 6 tools** — typed JSON Schema return structures with field descriptions,
+  required fields, and error case documentation. This is the key structural gap Glama penalized:
+  "no output schema provided" → tools now carry full structured behavioral data.
+- Explicit "No authentication required" and "No rate limits" in every description
+
+### Changed
+- MCP SDK minimum bumped to `>=1.9.0` to ensure `outputSchema` + `annotations` wire support
+- Descriptions shortened — return documentation moved from prose into `outputSchema` where it belongs
+- Version bumped to 1.0.5
+
 ## [1.0.4] — 2026-04-15
 
 ### Changed

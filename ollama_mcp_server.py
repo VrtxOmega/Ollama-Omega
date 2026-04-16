@@ -93,6 +93,114 @@ def _ok(data: Any) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(data, indent=2, default=str))]
 
 
+# ── OUTPUT SCHEMAS (JSON Schema for tool return values) ────────
+
+HEALTH_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "connected": {"type": "boolean", "description": "True if the Ollama daemon responded to the health check."},
+        "host": {"type": "string", "description": "The Ollama host URL that was checked (e.g., 'http://localhost:11434')."},
+        "running_models": {
+            "type": "array",
+            "description": "Models currently loaded in GPU/CPU memory. Empty array if none are loaded.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "size": {"type": "integer"},
+                    "expires_at": {"type": "string"}
+                }
+            }
+        },
+        "error": {"type": "string", "description": "Error message if connection failed. Only present on failure."}
+    },
+    "required": ["host"]
+}
+
+LIST_MODELS_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "models": {
+            "type": "array",
+            "description": "All locally installed models. Empty array if none are installed.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Model identifier — use this exact value as the 'model' parameter in other tools."},
+                    "size": {"type": "integer", "description": "Model size in bytes on disk."},
+                    "modified_at": {"type": "string", "description": "ISO 8601 timestamp of last modification."},
+                    "loaded": {"type": "boolean", "description": "True if the model is currently loaded in GPU/CPU memory."},
+                    "digest": {"type": "string", "description": "SHA256 digest of the model blob."}
+                },
+                "required": ["name", "size", "modified_at"]
+            }
+        }
+    },
+    "required": ["models"]
+}
+
+CHAT_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "message": {
+            "type": "object",
+            "description": "The assistant's response message.",
+            "properties": {
+                "role": {"type": "string", "enum": ["assistant"], "description": "Always 'assistant' for chat responses."},
+                "content": {"type": "string", "description": "The generated text content of the response."}
+            },
+            "required": ["role", "content"]
+        },
+        "model": {"type": "string", "description": "The model that generated the response."},
+        "total_duration": {"type": "integer", "description": "Total time in nanoseconds including load and inference."},
+        "eval_count": {"type": "integer", "description": "Number of tokens generated in the response."},
+        "error": {"type": "string", "description": "Error message if the request failed (e.g., model not found). Only present on failure."}
+    },
+    "required": ["model"]
+}
+
+GENERATE_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "response": {"type": "string", "description": "The generated text completion."},
+        "model": {"type": "string", "description": "The model that generated the response."},
+        "total_duration": {"type": "integer", "description": "Total time in nanoseconds including load and inference."},
+        "eval_count": {"type": "integer", "description": "Number of tokens generated."},
+        "error": {"type": "string", "description": "Error message if the request failed. Only present on failure."}
+    },
+    "required": ["model"]
+}
+
+SHOW_MODEL_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "modelfile": {"type": "string", "description": "The full Modelfile content defining this model's configuration."},
+        "parameters": {"type": "string", "description": "Runtime parameter defaults (e.g., temperature, context length) as a formatted string."},
+        "template": {"type": "string", "description": "Go template string used for prompt formatting."},
+        "details": {
+            "type": "object",
+            "description": "Model architecture details.",
+            "properties": {
+                "family": {"type": "string", "description": "Model family (e.g., 'llama', 'qwen2')."},
+                "parameter_size": {"type": "string", "description": "Human-readable parameter count (e.g., '8B', '70B')."},
+                "quantization_level": {"type": "string", "description": "Quantization format (e.g., 'Q4_K_M', 'F16')."},
+                "format": {"type": "string", "description": "Model format (e.g., 'gguf')."},
+                "families": {"type": "array", "items": {"type": "string"}}
+            },
+            "required": ["family", "parameter_size", "quantization_level"]
+        },
+        "error": {"type": "string", "description": "Error message if the model was not found. Only present on failure."}
+    }
+}
+
+PULL_MODEL_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string", "description": "Download result status (e.g., 'success'). Indicates the model is now available for inference."},
+        "error": {"type": "string", "description": "Error message if the download failed (e.g., network error, model not found in library). Only present on failure."}
+    }
+}
+
 # ── TOOL DEFINITIONS ───────────────────────────────────────────
 
 TOOLS = [
@@ -104,11 +212,11 @@ TOOLS = [
             "before calling any other tool in this server. Do not use this to list all "
             "installed models — use ollama_list_models instead. "
             "Behavior: Read-only, idempotent, safe to retry. No authentication required. "
-            "On success returns JSON with 'connected' (true), 'host' (URL string), and "
-            "'running_models' (array of model objects currently loaded in memory). "
-            "On connection failure returns { error: string, host: string } without throwing."
+            "No rate limits. Makes a single HTTP GET to the Ollama daemon. "
+            "On connection failure returns an error object without throwing."
         ),
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
+        outputSchema=HEALTH_OUTPUT,
         annotations=ToolAnnotations(
             title="Check Ollama Health",
             readOnlyHint=True,
@@ -125,12 +233,10 @@ TOOLS = [
             "ollama_generate, or ollama_show_model. Do not use this to check if the Ollama "
             "daemon is running — use ollama_health instead. "
             "Behavior: Read-only, idempotent, safe to retry. No authentication required. "
-            "Returns JSON with 'models' array. Each entry contains 'name' (string — use this "
-            "exact value as the 'model' parameter in other tools), 'size' (integer, bytes on disk), "
-            "'modified_at' (ISO 8601 timestamp), and 'loaded' (boolean — true if currently in "
-            "GPU/CPU memory). Returns an empty array if no models are installed."
+            "No rate limits. Returns an empty models array if no models are installed."
         ),
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
+        outputSchema=LIST_MODELS_OUTPUT,
         annotations=ToolAnnotations(
             title="List Available Models",
             readOnlyHint=True,
@@ -149,12 +255,11 @@ TOOLS = [
             "instead to avoid the overhead of the messages array. "
             "Prerequisites: The 'model' must already be installed locally. Call ollama_list_models "
             "to verify availability; use ollama_pull_model to download if missing. "
-            "Behavior: Read-only (no state changes on the server), but not idempotent — each "
-            "call generates a new response even with identical inputs. Network-dependent; response "
-            "time varies from seconds to minutes based on model size and prompt length. On model-not-found "
-            "error, returns { error: string } without throwing. Safe to retry on timeout. "
-            "Returns JSON with 'message' ({ role: 'assistant', content: string }), 'model' (string), "
-            "'total_duration' (nanoseconds), and 'eval_count' (tokens generated)."
+            "Behavior: Read-only (no state changes on the server), not idempotent — each call "
+            "generates a new response even with identical inputs. No authentication required. "
+            "No rate limits. Network-dependent; response time varies from seconds to minutes "
+            "based on model size and prompt length. Safe to retry on timeout. "
+            "On model-not-found error, returns an error object without throwing."
         ),
         inputSchema={
             "type": "object",
@@ -228,6 +333,7 @@ TOOLS = [
             "required": ["model", "messages"],
             "additionalProperties": False
         },
+        outputSchema=CHAT_OUTPUT,
         annotations=ToolAnnotations(
             title="Chat with Ollama Model",
             readOnlyHint=True,
@@ -247,10 +353,9 @@ TOOLS = [
             "Prerequisites: The 'model' must already be installed. Call ollama_list_models to verify; "
             "use ollama_pull_model to download if missing. "
             "Behavior: Read-only, not idempotent — each call produces a different generation even with "
-            "identical inputs. Network-dependent; response time varies with model size and prompt length. "
-            "On model-not-found error, returns { error: string } without throwing. Safe to retry on timeout. "
-            "Returns JSON with 'response' (string — the generated text), 'model' (string), "
-            "'total_duration' (nanoseconds), and 'eval_count' (tokens generated)."
+            "identical inputs. No authentication required. No rate limits. Network-dependent; response "
+            "time varies with model size and prompt length. Safe to retry on timeout. "
+            "On model-not-found error, returns an error object without throwing."
         ),
         inputSchema={
             "type": "object",
@@ -293,6 +398,7 @@ TOOLS = [
             "required": ["model", "prompt"],
             "additionalProperties": False
         },
+        outputSchema=GENERATE_OUTPUT,
         annotations=ToolAnnotations(
             title="Generate Text Completion",
             readOnlyHint=True,
@@ -310,11 +416,9 @@ TOOLS = [
             "ollama_generate. Do not use this to list all models — use ollama_list_models instead. "
             "Do not use this to download new models — use ollama_pull_model instead. "
             "Prerequisites: The model must already be installed locally (verify with ollama_list_models). "
-            "Behavior: Read-only, idempotent, safe to retry. Returns the same metadata for the same "
-            "model every time. On model-not-found error, returns { error: string } without throwing. "
-            "Returns JSON with 'modelfile' (full Modelfile text), 'parameters' (runtime defaults like "
-            "temperature and context length), 'template' (Go template for prompt formatting), and "
-            "'details' ({ family: string, parameter_size: string, quantization_level: string })."
+            "Behavior: Read-only, idempotent, safe to retry. No authentication required. "
+            "No rate limits. Returns the same metadata for the same model every time. "
+            "On model-not-found error, returns an error object without throwing."
         ),
         inputSchema={
             "type": "object",
@@ -332,6 +436,7 @@ TOOLS = [
             "required": ["model"],
             "additionalProperties": False
         },
+        outputSchema=SHOW_MODEL_OUTPUT,
         annotations=ToolAnnotations(
             title="Show Model Details",
             readOnlyHint=True,
@@ -347,12 +452,11 @@ TOOLS = [
             "Use this tool when a model is needed but not yet installed locally. "
             "Do not use this if the model is already available — call ollama_list_models first "
             "to check. Do not use this to run inference — use ollama_chat or ollama_generate after pulling. "
-            "Behavior: This is a WRITE operation — it downloads large files (1–100+ GB) and stores them "
-            "on disk. Execution time ranges from seconds to hours depending on model size and bandwidth. "
+            "Behavior: WRITE operation — downloads large files (1–100+ GB) and stores them on disk. "
             "Idempotent — re-pulling an already-installed model is safe and verifies integrity. "
-            "No authentication required. On network failure, returns { error: string } without throwing. "
-            "After completion, the model becomes available for ollama_chat, ollama_generate, and "
-            "ollama_show_model. Returns JSON with 'status' (string, e.g., 'success')."
+            "No authentication required. No rate limits. Execution time ranges from seconds to hours "
+            "depending on model size and network bandwidth. Not destructive (does not delete existing data). "
+            "On network failure, returns an error object without throwing."
         ),
         inputSchema={
             "type": "object",
@@ -371,6 +475,7 @@ TOOLS = [
             "required": ["model"],
             "additionalProperties": False
         },
+        outputSchema=PULL_MODEL_OUTPUT,
         annotations=ToolAnnotations(
             title="Pull/Download Model",
             readOnlyHint=False,
