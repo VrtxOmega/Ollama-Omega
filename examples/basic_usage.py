@@ -6,26 +6,32 @@ using the MCP Python SDK's ClientSession.
 
 Requirements:
     pip install mcp httpx
+
+Usage:
+    Set OLLAMA_OMEGA_DIR to the directory containing ollama_mcp_server.py,
+    or edit SERVER_DIR below to match your local path.
 """
 
 import asyncio
 import json
+import os
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+# Path to the directory containing ollama_mcp_server.py
+SERVER_DIR = os.environ.get(
+    "OLLAMA_OMEGA_DIR",
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+)
 
 
 async def main():
     """Connect to Ollama-Omega and exercise all 6 tools."""
 
     server_params = StdioServerParameters(
-        command="uv",
-        args=[
-            "--directory",
-            "c:\\Veritas_Lab\\ollama-mcp",
-            "run",
-            "python",
-            "ollama_mcp_server.py"
-        ],
+        command="python",
+        args=["ollama_mcp_server.py"],
+        cwd=SERVER_DIR,
         env={"PYTHONUTF8": "1"},
     )
 
